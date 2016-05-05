@@ -1,49 +1,66 @@
 package com.rtfsc.refreshlayout.core;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.util.AttributeSet;
+import android.util.SparseArray;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AbsListView;
-import android.widget.ImageView;
 
+import com.rtfsc.refreshlayout.handler.ContentDefaultHandler;
+import com.rtfsc.refreshlayout.handler.ContentHandler;
 import com.rtfsc.refreshlayout.handler.HeaderHandler;
+import com.rtfsc.refreshlayout.handler.PullUIHandler;
+import com.rtfsc.refreshlayout.indicator.OffsetIndicator;
+
+import java.lang.ref.WeakReference;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * @author HuangJx
  *         create on 2016/5/3.
  */
-public class PullToRefreshView extends ViewGroup implements AbsListView.OnScrollListener {
+public class PullToRefreshView extends ViewGroup {
 	private final int STATE_NONE = 0;
 	private final int STATE_REFRESHING = 1;
 	private final int STATE_PULL_DOWN = 2;
 	private final int STATE_RELEASE = 3;
-	private final int STATE = STATE_NONE;
+	private int STATE = STATE_NONE;
 
 	private int mHeaderId;
 	private int mContentId;
 	private View mHeader;
 	private View mContent;
+	private float mZuni = 0.3f;
 
 	private int mHeaderViewHeight;
 
+	private SparseArray<WeakReference<PullUIHandler>> mWeakReferenceSparseArray;    //UI事件分发
+	private ContentHandler mContentHandler;    //用来判断内容页能否下滑
+	private OffsetIndicator mOffsetIndicator;    //	offset代理器
 
-	private ImageView mWheel1, mWheel2;    //轮组图片组件
-	private ImageView mRider;  //骑手图片组件
-	private ImageView mSun, mBack1, mBack2;    //太阳、背景图片1、背景图片2
-
-	private int mFirstItemIndex = 0;
 
 	public PullToRefreshView(Context context) {
 		super(context);
+		init();
 	}
 
 	public PullToRefreshView(Context context, AttributeSet attrs) {
 		super(context, attrs);
+		init();
 	}
 
 	public PullToRefreshView(Context context, AttributeSet attrs, int defStyle) {
 		super(context, attrs, defStyle);
+		init();
+	}
+
+	private void init() {
+		mContentHandler = new ContentDefaultHandler() { };
+		mOffsetIndicator = new OffsetIndicator(this);
 	}
 
 
@@ -103,13 +120,14 @@ public class PullToRefreshView extends ViewGroup implements AbsListView.OnScroll
 		if (mHeader != null) {
 			measureChild(mHeader, widthMeasureSpec, heightMeasureSpec);
 			mHeaderViewHeight = mHeader.getMeasuredHeight();
+			mOffsetIndicator.setMaxHeight(mHeaderViewHeight);
 		}
 		// 测量content
 		if (mContent != null) {
 			ViewGroup.LayoutParams layoutParams = mContent.getLayoutParams();
 			int marginVertival = getMargin(layoutParams, MARGIN_TOP) + getMargin(layoutParams, MARGIN_BOTTOM);
 			int marginHorizontal = getMargin(layoutParams, MARGIN_LEFT) + getMargin(layoutParams, MARGIN_RIGHT);
-			int childWidthSpec = getChildMeasureSpec(heightMeasureSpec, getPaddingLeft() + getPaddingRight() + marginHorizontal, layoutParams.width);
+			int childWidthSpec = getChildMeasureSpec(widthMeasureSpec, getPaddingLeft() + getPaddingRight() + marginHorizontal, layoutParams.width);
 			int childHeightSpec = getChildMeasureSpec(heightMeasureSpec, getPaddingTop() + getPaddingBottom() + marginVertival, layoutParams.height);
 			mContent.measure(childWidthSpec, childHeightSpec);
 		}
@@ -117,14 +135,13 @@ public class PullToRefreshView extends ViewGroup implements AbsListView.OnScroll
 
 	@Override
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {
-		int offsetX = getCurrentX();
 		int paddingLeft = getPaddingLeft();
 		int paddingTop = getPaddingTop();
 
 		if (mHeader != null) {
 			LayoutParams lp = mHeader.getLayoutParams();
 			int left = paddingLeft + getMargin(lp, MARGIN_LEFT);
-			int top = paddingTop + getMargin(lp, MARGIN_TOP) + offsetX - mHeader.getMeasuredHeight();
+			int top = paddingTop + getMargin(lp, MARGIN_TOP) + mOffsetIndicator.getOffset() - mHeader.getMeasuredHeight();
 			int right = left + mHeader.getMeasuredWidth();
 			int bottom = top + mHeader.getMeasuredHeight();
 			mHeader.layout(left, top, right, bottom);
@@ -133,16 +150,11 @@ public class PullToRefreshView extends ViewGroup implements AbsListView.OnScroll
 		if (mContent != null) {
 			LayoutParams lp = mContent.getLayoutParams();
 			int left = paddingLeft + getMargin(lp, MARGIN_LEFT);
-			int top = paddingTop + getMargin(lp, MARGIN_TOP) + offsetX;
+			int top = paddingTop + getMargin(lp, MARGIN_TOP) + mOffsetIndicator.getOffset();
 			int right = left + mContent.getMeasuredWidth();
 			int bottom = top + mContent.getMeasuredHeight();
 			mContent.layout(left, top, right, bottom);
 		}
-	}
-
-
-	private int getCurrentX() {
-		return 0;
 	}
 
 
@@ -173,32 +185,11 @@ public class PullToRefreshView extends ViewGroup implements AbsListView.OnScroll
 	}
 
 
-	private void refreshState() {
-		switch (STATE) {
-			case STATE_NONE:
-				scrollTo(0, mHeaderViewHeight);
-				break;
-			case STATE_PULL_DOWN:
-				break;
-			case STATE_RELEASE:
-				break;
-			case STATE_REFRESHING:
-				break;
-		}
+	public void setContentHandler(ContentHandler contentHandler) {
+		mContentHandler = contentHandler;
 	}
 
-
-	@Override
-	public void onScrollStateChanged(AbsListView view, int scrollState) {
-
-	}
-
-	@Override
-	public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
-		this.mFirstItemIndex = firstVisibleItem;
-	}
-
-
+	/*MARGIN UTIL START*/
 	public static final int MARGIN_LEFT = 0;
 	public static final int MARGIN_TOP = 1;
 	public static final int MARGIN_RIGHT = 2;
@@ -221,5 +212,75 @@ public class PullToRefreshView extends ViewGroup implements AbsListView.OnScroll
 			default:
 				return 0;
 		}
+	}
+	/*MARGIN UTIL END*/
+
+	/*TOUCH EVENT HANDLE START*/
+	private float mStartY = 0;
+	private float mLastY = 0;
+	private final int SCROLL_FIRST_UP = 1;
+	private final int SCROLL_FIRST_DOWN = 2;
+	private final int SCROLL_FIRST_NONE = 3;
+	private int SCROLL_FIRST_STATE;
+	private boolean mRefreshAbleWhenDown = false;
+
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		switch (ev.getAction()) {
+			case MotionEvent.ACTION_DOWN:
+				mStartY = ev.getY();
+				mLastY = mStartY;
+				SCROLL_FIRST_STATE = SCROLL_FIRST_NONE;
+				mRefreshAbleWhenDown = mContentHandler.checkCanDoRefresh(this, mContent, mHeader);
+				break;
+			case MotionEvent.ACTION_MOVE:
+				float fingerY = ev.getY();
+				float offset = fingerY - mLastY;
+				mLastY = fingerY;
+
+				if (SCROLL_FIRST_STATE == SCROLL_FIRST_NONE && fingerY - mStartY != 0) {
+					SCROLL_FIRST_STATE = fingerY - mStartY > 0 ? SCROLL_FIRST_DOWN : SCROLL_FIRST_UP;
+				}
+
+				if (mOffsetIndicator.getOffset() == 0) {
+					if (mContentHandler.checkCanDoRefresh(this, mContent, mHeader) && mRefreshAbleWhenDown) {
+						if (SCROLL_FIRST_STATE == SCROLL_FIRST_DOWN) {
+							moveOffset(offset);
+							STATE = STATE_PULL_DOWN;
+						}
+					}
+				} else {
+					moveOffset(offset);
+					STATE = STATE_PULL_DOWN;
+				}
+				break;
+			case MotionEvent.ACTION_UP:
+				if (STATE == STATE_PULL_DOWN) {
+					STATE = STATE_RELEASE;
+					notifyStateChange();
+				}
+		}
+		return super.dispatchTouchEvent(ev);
+	}
+	/*TOUCH EVENT HANDLE END*/
+
+	private void notifyStateChange() {
+		switch (STATE) {
+			case STATE_NONE:
+				mOffsetIndicator.reverseOffset();
+				break;
+			case STATE_PULL_DOWN:
+				break;
+			case STATE_RELEASE:
+				mOffsetIndicator.reverseOffset();
+				break;
+			case STATE_REFRESHING:
+				break;
+		}
+	}
+
+	private void moveOffset(float offset) {
+		mOffsetIndicator.calculateOffset(offset);
+		requestLayout();
 	}
 }
